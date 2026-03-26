@@ -1,0 +1,238 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_REGISTRY    = 'registry.cn-hangzhou.aliyuncs.com'
+        DOCKER_NAMESPACE   = 'edu-platform'
+        IMAGE_TAG          = "${env.BUILD_NUMBER}"
+        MAVEN_OPTS         = '-Xmx1024m'
+        // Jenkins Credentials ID
+        DOCKER_CREDENTIALS = 'docker-registry-credentials'
+        DEPLOY_SERVER      = 'deploy-server-ssh'
+    }
+
+    tools {
+        maven 'Maven3'
+        jdk   'JDK17'
+    }
+
+    stages {
+
+        // ─────────────────────────────────────────────
+        // Stage 1: Checkout
+        // ─────────────────────────────────────────────
+        stage('Checkout') {
+            steps {
+                checkout scm
+                echo "Branch: ${env.BRANCH_NAME}, Build: #${env.BUILD_NUMBER}"
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // Stage 2: Build & Test (parallel per service)
+        // ─────────────────────────────────────────────
+        stage('Build & Test') {
+            steps {
+                dir('edu-platform') {
+                    sh 'mvn clean install -T 4 --batch-mode -Dmaven.test.failure.ignore=false'
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true,
+                          testResults: 'edu-platform/**/target/surefire-reports/*.xml'
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // Stage 3: Code Quality (optional SonarQube)
+        // ─────────────────────────────────────────────
+        stage('Code Quality') {
+            when {
+                branch 'main'
+            }
+            steps {
+                dir('edu-platform') {
+                    withSonarQubeEnv('SonarQube') {
+                        sh 'mvn sonar:sonar -Dsonar.projectKey=edu-platform --batch-mode'
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // Stage 4: Build Docker Images (parallel)
+        // ─────────────────────────────────────────────
+        stage('Docker Build') {
+            parallel {
+                stage('gateway-service') {
+                    steps {
+                        script {
+                            buildAndPushImage('gateway-service', 8080)
+                        }
+                    }
+                }
+                stage('user-service') {
+                    steps {
+                        script {
+                            buildAndPushImage('user-service', 8081)
+                        }
+                    }
+                }
+                stage('course-service') {
+                    steps {
+                        script {
+                            buildAndPushImage('course-service', 8082)
+                        }
+                    }
+                }
+                stage('order-service') {
+                    steps {
+                        script {
+                            buildAndPushImage('order-service', 8083)
+                        }
+                    }
+                }
+                stage('notification-service') {
+                    steps {
+                        script {
+                            buildAndPushImage('notification-service', 8084)
+                        }
+                    }
+                }
+                stage('frontend') {
+                    steps {
+                        script {
+                            buildAndPushImage('frontend', 80)
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // Stage 5: Deploy to Staging
+        // ─────────────────────────────────────────────
+        stage('Deploy Staging') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    branch 'main'
+                }
+            }
+            steps {
+                sshagent(credentials: [DEPLOY_SERVER]) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no deploy@staging-server \\
+                            "cd /opt/edu-platform && \\
+                             export IMAGE_TAG=${IMAGE_TAG} && \\
+                             docker-compose pull && \\
+                             docker-compose up -d --remove-orphans && \\
+                             docker image prune -f"
+                    """
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // Stage 6: Smoke Test
+        // ─────────────────────────────────────────────
+        stage('Smoke Test') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    branch 'main'
+                }
+            }
+            steps {
+                script {
+                    // Wait for services to be ready
+                    sleep(time: 30, unit: 'SECONDS')
+                    def gatewayUrl = 'http://staging-server:8080'
+                    sh """
+                        curl -f ${gatewayUrl}/actuator/health || exit 1
+                        echo "Gateway health check passed"
+                        curl -f ${gatewayUrl}/user-service/actuator/health || exit 1
+                        echo "User service health check passed"
+                        curl -f ${gatewayUrl}/course-service/actuator/health || exit 1
+                        echo "Course service health check passed"
+                    """
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // Stage 7: Deploy to Production (manual gate)
+        // ─────────────────────────────────────────────
+        stage('Deploy Production') {
+            when {
+                branch 'main'
+            }
+            steps {
+                timeout(time: 30, unit: 'MINUTES') {
+                    input message: '确认部署到生产环境？',
+                          ok: '确认部署',
+                          submitter: 'admin,release-manager'
+                }
+                sshagent(credentials: [DEPLOY_SERVER]) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no deploy@prod-server \\
+                            "cd /opt/edu-platform && \\
+                             export IMAGE_TAG=${IMAGE_TAG} && \\
+                             docker-compose pull && \\
+                             docker-compose up -d --remove-orphans && \\
+                             docker image prune -f"
+                    """
+                }
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // Post Actions
+    // ─────────────────────────────────────────────
+    post {
+        success {
+            echo "Build #${env.BUILD_NUMBER} succeeded on branch ${env.BRANCH_NAME}"
+            // Uncomment to enable DingTalk/Feishu notification:
+            // dingtalk(robot: 'dingtalk-robot', type: 'TEXT',
+            //          text: ["✅ edu-platform Build #${env.BUILD_NUMBER} 成功"])
+        }
+        failure {
+            echo "Build #${env.BUILD_NUMBER} FAILED on branch ${env.BRANCH_NAME}"
+            mail to: 'team@example.com',
+                 subject: "[FAILURE] edu-platform Build #${env.BUILD_NUMBER}",
+                 body: "Branch: ${env.BRANCH_NAME}\nCheck: ${env.BUILD_URL}"
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────
+// Helper: Build Maven artifact + Docker image + push
+// ─────────────────────────────────────────────────────
+def buildAndPushImage(String serviceName, int port) {
+    def imageName = "${DOCKER_REGISTRY}/${DOCKER_NAMESPACE}/${serviceName}:${IMAGE_TAG}"
+    def imageLatest = "${DOCKER_REGISTRY}/${DOCKER_NAMESPACE}/${serviceName}:latest"
+
+    withCredentials([usernamePassword(
+            credentialsId: DOCKER_CREDENTIALS,
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS')]) {
+
+        sh "docker login ${DOCKER_REGISTRY} -u ${DOCKER_USER} -p ${DOCKER_PASS}"
+    }
+
+    dir("edu-platform/${serviceName}") {
+        sh """
+            docker build -t ${imageName} -t ${imageLatest} .
+            docker push ${imageName}
+            docker push ${imageLatest}
+        """
+    }
+
+    echo "${serviceName} image pushed: ${imageName}"
+}

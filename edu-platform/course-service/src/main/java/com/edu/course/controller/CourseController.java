@@ -1,0 +1,94 @@
+package com.edu.course.controller;
+
+import com.edu.common.core.result.PageResult;
+import com.edu.common.core.result.Result;
+import com.edu.common.security.context.UserContext;
+import com.edu.course.dto.*;
+import com.edu.course.entity.Category;
+import com.edu.course.service.CourseService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * 课程控制器
+ */
+@Tag(name = "课程管理", description = "课程CRUD、分类、搜索、AI推荐")
+@RestController
+@RequestMapping("/api/course")
+@RequiredArgsConstructor
+public class CourseController {
+
+    private final CourseService courseService;
+
+    @Operation(summary = "分页查询课程列表")
+    @GetMapping("/list")
+    public Result<PageResult<CourseVO>> listCourses(CourseQueryRequest query) {
+        return Result.success(courseService.listCourses(query));
+    }
+
+    @Operation(summary = "获取课程详情")
+    @GetMapping("/{id}")
+    public Result<CourseVO> getCourse(@PathVariable Long id) {
+        return Result.success(courseService.getCourseById(id));
+    }
+
+    @Operation(summary = "获取分类列表")
+    @GetMapping("/category/list")
+    public Result<List<Category>> listCategories() {
+        return Result.success(courseService.listCategories());
+    }
+
+    @Operation(summary = "AI课程推荐")
+    @GetMapping("/recommend")
+    public Result<List<CourseVO>> recommend(
+            @RequestParam(required = false) String interest) {
+        Long userId = UserContext.getCurrentUserId();
+        List<CourseVO> recommendations = courseService.getAiRecommendations(userId, interest);
+        return Result.success(recommendations);
+    }
+
+    // ===== 管理员/教师接口 =====
+
+    @Operation(summary = "创建课程")
+    @PostMapping
+    public Result<CourseVO> createCourse(@Valid @RequestBody CourseRequest request) {
+        Long userId = UserContext.getCurrentUserId();
+        String username = UserContext.getCurrentUsername();
+        return Result.success("创建成功",
+                courseService.createCourse(request, userId, username));
+    }
+
+    @Operation(summary = "更新课程")
+    @PutMapping("/{id}")
+    public Result<CourseVO> updateCourse(
+            @PathVariable Long id,
+            @Valid @RequestBody CourseRequest request) {
+        return Result.success("更新成功", courseService.updateCourse(id, request));
+    }
+
+    @Operation(summary = "发布课程")
+    @PutMapping("/{id}/publish")
+    public Result<Void> publishCourse(@PathVariable Long id) {
+        courseService.publishCourse(id);
+        return Result.success("发布成功");
+    }
+
+    @Operation(summary = "删除课程")
+    @DeleteMapping("/{id}")
+    public Result<Void> deleteCourse(@PathVariable Long id) {
+        courseService.deleteCourse(id);
+        return Result.success("删除成功");
+    }
+
+    @Operation(summary = "增加学生数（内部接口）")
+    @PutMapping("/{id}/student-count")
+    public Result<Void> incrementStudentCount(@PathVariable Long id) {
+        courseService.incrementStudentCount(id);
+        return Result.success();
+    }
+}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.edu.user.mapper.UserMapper">
+
+    <select id="findByUsernameOrEmail" resultType="com.edu.user.entity.User">
+        SELECT * FROM t_user
+        WHERE (username = #{account} OR email = #{account})
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+</mapper>

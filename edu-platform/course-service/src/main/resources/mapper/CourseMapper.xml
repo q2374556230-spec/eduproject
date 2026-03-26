@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.edu.course.mapper.CourseMapper">
+
+    <select id="selectCourseVOPage" resultType="com.edu.course.dto.CourseVO">
+        SELECT
+            c.id, c.title, c.description, c.cover_image, c.teacher_id, c.teacher_name,
+            c.category_id, cat.name AS category_name,
+            c.price, c.duration, c.level, c.status,
+            c.student_count, c.rating, c.tags, c.created_at
+        FROM t_course c
+        LEFT JOIN t_category cat ON c.category_id = cat.id AND cat.deleted = 0
+        WHERE c.deleted = 0
+          AND c.status = 1
+          <if test="query.keyword != null and query.keyword != ''">
+              AND (c.title LIKE CONCAT('%', #{query.keyword}, '%')
+                   OR c.description LIKE CONCAT('%', #{query.keyword}, '%'))
+          </if>
+          <if test="query.categoryId != null">
+              AND c.category_id = #{query.categoryId}
+          </if>
+          <if test="query.level != null and query.level != ''">
+              AND c.level = #{query.level}
+          </if>
+          <if test="query.minPrice != null">
+              AND c.price >= #{query.minPrice}
+          </if>
+          <if test="query.maxPrice != null">
+              AND c.price &lt;= #{query.maxPrice}
+          </if>
+        ORDER BY
+          <choose>
+              <when test="query.orderBy == 'price'">c.price</when>
+              <when test="query.orderBy == 'student_count'">c.student_count</when>
+              <when test="query.orderBy == 'rating'">c.rating</when>
+              <otherwise>c.created_at</otherwise>
+          </choose>
+          <choose>
+              <when test="query.orderDir == 'asc'">ASC</when>
+              <otherwise>DESC</otherwise>
+          </choose>
+    </select>
+
+</mapper>
