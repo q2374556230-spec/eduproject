@@ -1,15 +1,34 @@
-version: '3.8'
-
 networks:
   edu-net:
     driver: bridge
 
 volumes:
+  mysql-data:
   redis-data:
   nacos-data:
 
 services:
   # ==================== 基础设施 ====================
+
+  mysql:
+    image: mysql:8.0
+    container_name: edu-mysql
+    networks: [edu-net]
+    ports:
+      - "13306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-edu123456}
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_PASSWORD:-edu123456}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -55,7 +74,7 @@ services:
       JVM_XMX: 256m
     ports:
       - "8848:8848"
-      - "9848:9848"
+      - "19848:9848"
     volumes:
       - nacos-data:/home/nacos/data
     healthcheck:
@@ -69,7 +88,7 @@ services:
     container_name: edu-zipkin
     networks: [edu-net]
     ports:
-      - "9411:9411"
+      - "19411:9411"
     environment:
       STORAGE_TYPE: mem
 
@@ -82,12 +101,15 @@ services:
     container_name: edu-gateway
     networks: [edu-net]
     ports:
-      - "8080:8080"
+      - "18080:8080"
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      NACOS_SERVER_ADDR: nacos:8848
+      NACOS_HOST: nacos
+      NACOS_NAMESPACE: ${NACOS_NAMESPACE:-}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-edu-platform-jwt-secret-key-2024-very-long-secret}
+      ZIPKIN_HOST: zipkin
     depends_on:
       nacos:
         condition: service_healthy
@@ -105,16 +127,19 @@ services:
       - "8081:8081"
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      NACOS_SERVER_ADDR: nacos:8848
-      MYSQL_HOST: host.docker.internal
+      NACOS_HOST: nacos
+      NACOS_NAMESPACE: ${NACOS_NAMESPACE:-}
+      MYSQL_HOST: mysql
       MYSQL_PORT: 3306
-      MYSQL_DATABASE: edu_user
       MYSQL_USERNAME: root
-      MYSQL_PASSWORD: edu123456
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-edu123456}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      JWT_SECRET: ${JWT_SECRET:-edu-platform-jwt-secret-key-2024-very-long-secret}
+      ZIPKIN_HOST: zipkin
     depends_on:
+      mysql:
+        condition: service_healthy
       nacos:
         condition: service_healthy
       redis:
@@ -131,17 +156,19 @@ services:
       - "8082:8082"
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      NACOS_SERVER_ADDR: nacos:8848
-      MYSQL_HOST: host.docker.internal
+      NACOS_HOST: nacos
+      NACOS_NAMESPACE: ${NACOS_NAMESPACE:-}
+      MYSQL_HOST: mysql
       MYSQL_PORT: 3306
-      MYSQL_DATABASE: edu_course
       MYSQL_USERNAME: root
-      MYSQL_PASSWORD: edu123456
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-edu123456}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-sk-placeholder}
-      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      ZIPKIN_HOST: zipkin
     depends_on:
+      mysql:
+        condition: service_healthy
       nacos:
         condition: service_healthy
       redis:
@@ -158,18 +185,19 @@ services:
       - "8083:8083"
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      NACOS_SERVER_ADDR: nacos:8848
-      MYSQL_HOST: host.docker.internal
+      NACOS_HOST: nacos
+      NACOS_NAMESPACE: ${NACOS_NAMESPACE:-}
+      MYSQL_HOST: mysql
       MYSQL_PORT: 3306
-      MYSQL_DATABASE: edu_order
       MYSQL_USERNAME: root
-      MYSQL_PASSWORD: edu123456
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-edu123456}
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USERNAME: edu
-      RABBITMQ_PASSWORD: edu123456
-      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      RABBITMQ_USER: edu
+      RABBITMQ_PASS: edu123456
+      ZIPKIN_HOST: zipkin
     depends_on:
+      mysql:
+        condition: service_healthy
       nacos:
         condition: service_healthy
       rabbitmq:
@@ -186,18 +214,19 @@ services:
       - "8084:8084"
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      NACOS_SERVER_ADDR: nacos:8848
-      MYSQL_HOST: host.docker.internal
+      NACOS_HOST: nacos
+      NACOS_NAMESPACE: ${NACOS_NAMESPACE:-}
+      MYSQL_HOST: mysql
       MYSQL_PORT: 3306
-      MYSQL_DATABASE: edu_notification
       MYSQL_USERNAME: root
-      MYSQL_PASSWORD: edu123456
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-edu123456}
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USERNAME: edu
-      RABBITMQ_PASSWORD: edu123456
-      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      RABBITMQ_USER: edu
+      RABBITMQ_PASS: edu123456
+      ZIPKIN_HOST: zipkin
     depends_on:
+      mysql:
+        condition: service_healthy
       nacos:
         condition: service_healthy
       rabbitmq:
@@ -211,7 +240,7 @@ services:
     container_name: edu-frontend
     networks: [edu-net]
     ports:
-      - "3000:80"
+      - "80:80"
     depends_on:
       - gateway-service
     restart: on-failure

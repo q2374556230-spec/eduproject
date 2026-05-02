@@ -10,14 +10,6 @@ spring:
       port: 6379
       password: ${REDIS_PASSWORD:}
   cloud:
-    nacos:
-      discovery:
-        server-addr: ${NACOS_HOST:localhost}:8848
-        namespace: dev
-      config:
-        server-addr: ${NACOS_HOST:localhost}:8848
-        namespace: dev
-        file-extension: yaml
     gateway:
       discovery:
         locator:
@@ -111,15 +103,7 @@ jwt:
 
 # 白名单（不需要JWT验证的路径）
 gateway:
-  white-list:
-    - /api/user/register
-    - /api/user/login
-    - /api/course/list
-    - /api/course/category/list
-    - /v3/api-docs
-    - /swagger-ui
-    - /swagger-ui.html
-    - /webjars
+  white-list: /api/user/register,/api/user/login,/api/course/list,/api/course/category/list,/api/course/recommend,/v3/api-docs,/swagger-ui,/swagger-ui.html,/webjars
 
 # Swagger 聚合
 springdoc:

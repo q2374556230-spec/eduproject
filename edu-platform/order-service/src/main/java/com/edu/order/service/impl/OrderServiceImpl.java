@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -167,5 +168,29 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         Page<Order> pageResult = page(new Page<>(page, size), wrapper);
         return PageResult.of(pageResult.getCurrent(), pageResult.getSize(),
                 pageResult.getTotal(), pageResult.getRecords());
+    }
+
+    @Override
+    public Map<String, Object> getStats() {
+        long totalOrders = count();
+        long pendingOrders = count(new LambdaQueryWrapper<Order>().eq(Order::getStatus, 0));
+        long paidOrders = count(new LambdaQueryWrapper<Order>().eq(Order::getStatus, 1));
+        long cancelledOrders = count(new LambdaQueryWrapper<Order>().eq(Order::getStatus, 2));
+        long refundedOrders = count(new LambdaQueryWrapper<Order>().eq(Order::getStatus, 3));
+
+        List<Order> paidList = list(new LambdaQueryWrapper<Order>().eq(Order::getStatus, 1));
+        BigDecimal totalRevenue = paidList.stream()
+                .map(Order::getAmount)
+                .filter(amount -> amount != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return Map.of(
+                "totalOrders", totalOrders,
+                "totalRevenue", totalRevenue,
+                "pendingOrders", pendingOrders,
+                "paidOrders", paidOrders,
+                "cancelledOrders", cancelledOrders,
+                "refundedOrders", refundedOrders
+        );
     }
 }

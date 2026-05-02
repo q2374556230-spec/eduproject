@@ -1,22 +1,27 @@
 import request from '@/utils/request'
 
+function normalizeCourseParams(params = {}) {
+  const { pageNum, pageSize, sortBy, ...rest } = params
+  const sortMap = {
+    studentCount: 'student_count',
+    createdAt: 'created_at'
+  }
+  return {
+    ...rest,
+    ...(pageNum !== undefined ? { page: pageNum } : {}),
+    ...(pageSize !== undefined ? { size: pageSize } : {}),
+    ...(sortBy !== undefined ? { orderBy: sortMap[sortBy] || sortBy } : {})
+  }
+}
+
 export const courseApi = {
-  // 获取课程列表
-  getCourseList: params => request.get('/course/list', { params }),
-  // 获取课程详情
+  getCourseList: params => request.get('/course/list', { params: normalizeCourseParams(params) }),
   getCourseById: id => request.get(`/course/${id}`),
-  // 获取课程分类
   getCategoryList: () => request.get('/course/category/list'),
-  // AI推荐课程
-  getAiRecommendations: () => request.get('/course/ai/recommend'),
-  // 管理员：创建课程
-  createCourse: data => request.post('/course/admin', data),
-  // 管理员：更新课程
-  updateCourse: (id, data) => request.put(`/course/admin/${id}`, data),
-  // 管理员：删除课程
-  deleteCourse: id => request.delete(`/course/admin/${id}`),
-  // 管理员：发布课程
-  publishCourse: id => request.put(`/course/admin/${id}/publish`),
-  // 管理员：下架课程
-  unpublishCourse: id => request.put(`/course/admin/${id}/unpublish`)
+  getAiRecommendations: params => request.get('/course/recommend', { params }),
+  createCourse: data => request.post('/course', data),
+  updateCourse: (id, data) => request.put(`/course/${id}`, data),
+  deleteCourse: id => request.delete(`/course/${id}`),
+  publishCourse: id => request.put(`/course/${id}/publish`),
+  unpublishCourse: id => request.put(`/course/${id}/unpublish`)
 }

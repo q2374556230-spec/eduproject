@@ -28,8 +28,8 @@ export const useCourseStore = defineStore('course', {
       }
     },
 
-    async fetchAiRecommendations() {
-      const res = await courseApi.getAiRecommendations()
+    async fetchAiRecommendations(params = {}) {
+      const res = await courseApi.getAiRecommendations(params)
       this.aiRecommendations = res.data || []
     }
   }

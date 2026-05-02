@@ -33,6 +33,7 @@ public class CourseVO {
 
     /** AI推荐理由（AI推荐时填充） */
     private String recommendReason;
+    private Integer matchScore;
 
     public String getLevelDesc() {
         return switch (this.level) {

@@ -47,7 +47,7 @@ public class UserController {
     public Result<Void> logout(HttpServletRequest request) {
         String token = extractToken(request);
         userService.logout(token);
-        return Result.success("已退出登录");
+        return Result.success();
     }
 
     @Operation(summary = "获取当前用户信息", security = @SecurityRequirement(name = "Bearer"))
@@ -64,6 +64,14 @@ public class UserController {
         Long userId = UserContext.getCurrentUserId();
         UserVO userVO = userService.updateProfile(userId, request);
         return Result.success("更新成功", userVO);
+    }
+
+    @Operation(summary = "修改当前用户密码", security = @SecurityRequirement(name = "Bearer"))
+    @PutMapping("/password")
+    public Result<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        Long userId = UserContext.getCurrentUserId();
+        userService.changePassword(userId, request);
+        return Result.success();
     }
 
     @Operation(summary = "根据ID获取用户信息（服务间调用）")
@@ -94,7 +102,7 @@ public class UserController {
             @PathVariable Long userId,
             @RequestParam Integer status) {
         userService.updateStatus(userId, status);
-        return Result.success("状态更新成功");
+        return Result.success();
     }
 
     private String extractToken(HttpServletRequest request) {

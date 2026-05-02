@@ -6,8 +6,8 @@ spring:
     name: user-service
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/edu_user?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: root
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/edu_user?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${MYSQL_USERNAME:root}
     password: ${MYSQL_PASSWORD:123456}
   data:
     redis:
@@ -21,15 +21,6 @@ spring:
           max-wait: -1ms
           max-idle: 10
           min-idle: 0
-  cloud:
-    nacos:
-      discovery:
-        server-addr: ${NACOS_HOST:localhost}:8848
-        namespace: dev
-      config:
-        server-addr: ${NACOS_HOST:localhost}:8848
-        namespace: dev
-        file-extension: yaml
 
 # MyBatis Plus
 mybatis-plus:

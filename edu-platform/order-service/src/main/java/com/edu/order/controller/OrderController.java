@@ -57,7 +57,7 @@ public class OrderController {
     public Result<Void> cancelOrder(@PathVariable Long orderId) {
         Long userId = UserContext.getCurrentUserId();
         orderService.cancelOrder(orderId, userId);
-        return Result.success("订单已取消");
+        return Result.success();
     }
 
     @Operation(summary = "所有订单列表（管理员）")
@@ -67,5 +67,11 @@ public class OrderController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
         return Result.success(orderService.listAllOrders(status, page, size));
+    }
+
+    @Operation(summary = "订单统计数据（管理员）")
+    @GetMapping("/admin/stats")
+    public Result<java.util.Map<String, Object>> getStats() {
+        return Result.success(orderService.getStats());
     }
 }

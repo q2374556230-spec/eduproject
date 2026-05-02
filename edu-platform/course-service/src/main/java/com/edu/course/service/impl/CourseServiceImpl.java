@@ -9,7 +9,9 @@ import com.edu.common.core.result.PageResult;
 import com.edu.common.core.result.ResultCode;
 import com.edu.common.core.util.BeanCopyUtil;
 import com.edu.course.client.ClaudeAiClient;
-import com.edu.course.dto.*;
+import com.edu.course.dto.CourseQueryRequest;
+import com.edu.course.dto.CourseRequest;
+import com.edu.course.dto.CourseVO;
 import com.edu.course.entity.Category;
 import com.edu.course.entity.Course;
 import com.edu.course.mapper.CategoryMapper;
@@ -17,6 +19,7 @@ import com.edu.course.mapper.CourseMapper;
 import com.edu.course.service.CourseService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,9 +28,6 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-/**
- * 课程服务实现
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -42,6 +42,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     private static final String CATEGORY_CACHE_KEY = "course:categories";
     private static final long CACHE_TTL_MINUTES = 30;
 
+    @Value("${ai.claude.api-key:}")
+    private String claudeApiKey;
+
     @Override
     public PageResult<CourseVO> listCourses(CourseQueryRequest query) {
         Page<CourseVO> page = new Page<>(query.getPage(), query.getSize());
@@ -54,7 +57,6 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     @Override
     @SuppressWarnings("unchecked")
     public CourseVO getCourseById(Long id) {
-        // 先查缓存
         String cacheKey = COURSE_CACHE_PREFIX + id;
         Object cached = redisTemplate.opsForValue().get(cacheKey);
         if (cached instanceof CourseVO vo) {
@@ -67,8 +69,6 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         }
 
         CourseVO vo = BeanCopyUtil.copyBean(course, CourseVO.class);
-
-        // 查分类名称
         if (course.getCategoryId() != null) {
             Category category = categoryMapper.selectById(course.getCategoryId());
             if (category != null) {
@@ -76,7 +76,6 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             }
         }
 
-        // 写入缓存
         redisTemplate.opsForValue().set(cacheKey, vo, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
         return vo;
     }
@@ -87,10 +86,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         Course course = BeanCopyUtil.copyBean(request, Course.class);
         course.setTeacherId(teacherId);
         course.setTeacherName(teacherName);
-        course.setStatus(0); // 草稿状态
+        course.setStatus(0);
         course.setStudentCount(0);
         save(course);
-
         return getCourseById(course.getId());
     }
 
@@ -105,8 +103,6 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         Course update = BeanCopyUtil.copyBean(request, Course.class);
         update.setId(id);
         updateById(update);
-
-        // 清除缓存
         redisTemplate.delete(COURSE_CACHE_PREFIX + id);
         return getCourseById(id);
     }
@@ -133,13 +129,25 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void unpublishCourse(Long id) {
+        Course course = getById(id);
+        if (course == null) {
+            throw new BusinessException(ResultCode.COURSE_NOT_FOUND);
+        }
+        course.setStatus(2);
+        updateById(course);
+        redisTemplate.delete(COURSE_CACHE_PREFIX + id);
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public List<Category> listCategories() {
-        // 分类列表缓存
         Object cached = redisTemplate.opsForValue().get(CATEGORY_CACHE_KEY);
         if (cached instanceof List) {
             return (List<Category>) cached;
         }
+
         List<Category> categories = categoryMapper.selectList(
                 new LambdaQueryWrapper<Category>()
                         .eq(Category::getStatus, 1)
@@ -149,8 +157,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     }
 
     @Override
-    public List<CourseVO> getAiRecommendations(Long userId, String userInterest) {
-        // 获取热门课程作为候选
+    public List<CourseVO> getAiRecommendations(Long userId, String userInterest, String level, String goal, Integer limit) {
+        int recommendationLimit = limit == null ? 3 : Math.max(1, Math.min(limit, 10));
+
         CourseQueryRequest query = new CourseQueryRequest();
         query.setOrderBy("student_count");
         query.setPage(1);
@@ -161,33 +170,106 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             return List.of();
         }
 
-        // 构建课程摘要传给AI
+        if (shouldUseMockRecommendation()) {
+            return buildMockRecommendations(hotCourses.getRecords(), userInterest, level, goal, recommendationLimit);
+        }
+
         String courseSummary = hotCourses.getRecords().stream()
-                .map(c -> String.format("ID:%d 《%s》 分类:%s 难度:%s 价格:%.0f元",
+                .map(c -> String.format("ID:%d Title:%s Category:%s Level:%s Price:%s",
                         c.getId(), c.getTitle(), c.getCategoryName(), c.getLevelDesc(), c.getPrice()))
                 .collect(Collectors.joining("\n"));
 
-        // 调用 Claude AI 获取推荐
-        String prompt = String.format(
-                "你是一个专业的在线教育顾问。以下是我们平台的课程列表：\n%s\n\n" +
-                "用户兴趣/需求：%s\n\n" +
-                "请从以上课程中推荐最适合该用户的3门课程，以JSON数组格式返回，格式为：\n" +
-                "[{\"id\": 课程ID, \"reason\": \"推荐理由（50字内）\"}]\n" +
-                "只返回JSON，不要其他内容。",
+        String prompt = String.format("""
+                You are an online learning advisor. Recommend courses only from this catalog:
+                %s
+
+                Learner interest: %s
+                Current level: %s
+                Learning goal: %s
+
+                Return exactly %d recommendations as JSON only:
+                [{"id": 1, "reason": "reason within 50 Chinese characters", "matchScore": 95}]
+                """,
                 courseSummary,
-                userInterest != null ? userInterest : "全面提升技能"
-        );
+                hasText(userInterest) ? userInterest : "general skill improvement",
+                hasText(level) ? level : "beginner",
+                hasText(goal) ? goal : "finish a practical learning path",
+                recommendationLimit);
 
         try {
-            String aiResponse = claudeAiClient.chat(prompt);
-            return claudeAiClient.parseRecommendations(aiResponse, hotCourses.getRecords());
+            List<CourseVO> aiRecommendations = claudeAiClient.parseRecommendations(
+                    claudeAiClient.chat(prompt), hotCourses.getRecords());
+            if (aiRecommendations.isEmpty()) {
+                return buildMockRecommendations(hotCourses.getRecords(), userInterest, level, goal, recommendationLimit);
+            }
+            return aiRecommendations.stream().limit(recommendationLimit).collect(Collectors.toList());
         } catch (Exception e) {
-            log.warn("AI推荐服务异常，返回默认热门课程: {}", e.getMessage());
-            // 降级：返回前3门热门课程
-            return hotCourses.getRecords().stream().limit(3)
-                    .peek(c -> c.setRecommendReason("热门推荐"))
-                    .collect(Collectors.toList());
+            log.warn("AI recommendation failed, using local mock recommendations: {}", e.getMessage());
+            return buildMockRecommendations(hotCourses.getRecords(), userInterest, level, goal, recommendationLimit);
         }
+    }
+
+    private boolean shouldUseMockRecommendation() {
+        return !hasText(claudeApiKey)
+                || claudeApiKey.contains("placeholder")
+                || claudeApiKey.contains("your-api-key");
+    }
+
+    private List<CourseVO> buildMockRecommendations(List<CourseVO> courses, String interest, String level, String goal, int limit) {
+        String normalizedInterest = safe(interest).toLowerCase();
+        String normalizedGoal = safe(goal).toLowerCase();
+        String normalizedLevel = safe(level);
+
+        return courses.stream()
+                .peek(course -> {
+                    int score = 70;
+                    String haystack = String.join(" ",
+                            safe(course.getTitle()),
+                            safe(course.getDescription()),
+                            safe(course.getCategoryName()),
+                            safe(course.getTags())).toLowerCase();
+
+                    if (hasText(normalizedInterest) && haystack.contains(normalizedInterest)) {
+                        score += 18;
+                    }
+                    if (hasText(normalizedLevel) && normalizedLevel.equals(course.getLevel())) {
+                        score += 8;
+                    }
+                    if (hasText(normalizedGoal) && haystack.contains(normalizedGoal)) {
+                        score += 6;
+                    }
+                    score += Math.min(6, course.getStudentCount() == null ? 0 : course.getStudentCount() / 1000);
+
+                    course.setMatchScore(Math.min(score, 99));
+                    course.setRecommendReason(buildReason(interest, level, goal));
+                })
+                .sorted((a, b) -> Integer.compare(
+                        b.getMatchScore() == null ? 0 : b.getMatchScore(),
+                        a.getMatchScore() == null ? 0 : a.getMatchScore()))
+                .limit(limit)
+                .collect(Collectors.toList());
+    }
+
+    private String buildReason(String interest, String level, String goal) {
+        StringBuilder reason = new StringBuilder("匹配课程库中的热门课程");
+        if (hasText(interest)) {
+            reason.append("，贴合兴趣：").append(interest);
+        }
+        if (hasText(level)) {
+            reason.append("，适合当前水平：").append(level);
+        }
+        if (hasText(goal)) {
+            reason.append("，服务目标：").append(goal);
+        }
+        return reason.toString();
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
     }
 
     @Override

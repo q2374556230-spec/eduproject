@@ -102,9 +102,13 @@ public class ClaudeAiClient {
                         Object idObj = rec.get("id");
                         Long id = idObj instanceof Number ? ((Number) idObj).longValue() : null;
                         String reason = (String) rec.get("reason");
+                        Object matchScoreObj = rec.get("matchScore");
                         CourseVO course = courseMap.get(id);
                         if (course != null) {
                             course.setRecommendReason(reason);
+                            if (matchScoreObj instanceof Number number) {
+                                course.setMatchScore(number.intValue());
+                            }
                         }
                         return course;
                     })

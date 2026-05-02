@@ -35,17 +35,17 @@ CREATE TABLE IF NOT EXISTS t_user (
 
 -- 初始管理员账号（密码: admin123456，BCrypt加密）
 INSERT INTO t_user (id, username, password, email, role, status, created_at, updated_at, deleted)
-VALUES (1, 'admin', '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW',
+VALUES (1, 'admin', '$2a$10$s6QIR9jgM46OU/6eMhogKOh6PehCQa0imjfSVuVj/70dGumppywZe',
         'admin@edu.com', 'admin', 1, NOW(), NOW(), 0);
 
 -- 测试学生账号（密码: student123）
 INSERT INTO t_user (id, username, password, email, role, status, created_at, updated_at, deleted)
-VALUES (2, 'student01', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWi',
+VALUES (2, 'student01', '$2a$10$fkFEYr23F3X7pGxvUNH6ueLOP1Peph4wTPL3D5Np5xPuy2tOBcj/m',
         'student01@edu.com', 'student', 1, NOW(), NOW(), 0);
 
 -- 测试教师账号（密码: teacher123）
 INSERT INTO t_user (id, username, password, email, role, status, created_at, updated_at, deleted)
-VALUES (3, 'teacher01', '$2a$10$Yx9X8HkV7jBmjXTPlm.bS.wZ8xLNfv1FjBnOkT4oKhW0cDwR3.bXK',
+VALUES (3, 'teacher01', '$2a$10$FyqhIrxKFgut89fhRJc3PuDfhdcQr6RPpcVKdbw1ue2266KGIgBgC',
         'teacher01@edu.com', 'teacher', 1, NOW(), NOW(), 0);
 
 

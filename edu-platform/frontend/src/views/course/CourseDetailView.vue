@@ -126,7 +126,7 @@ async function handleEnroll() {
   try {
     const res = await orderApi.createOrder({ courseId: course.value.id })
     if (course.value.price === 0) {
-      await orderApi.payOrder(res.data.orderNo)
+      await orderApi.payOrder(res.data.id)
       enrolled.value = true
       ElMessage.success('报名成功！')
     } else {

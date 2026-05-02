@@ -6,8 +6,8 @@ spring:
     name: course-service
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/edu_course?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: root
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/edu_course?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${MYSQL_USERNAME:root}
     password: ${MYSQL_PASSWORD:123456}
   data:
     redis:
@@ -15,15 +15,6 @@ spring:
       port: 6379
       password: ${REDIS_PASSWORD:}
       database: 1
-  cloud:
-    nacos:
-      discovery:
-        server-addr: ${NACOS_HOST:localhost}:8848
-        namespace: dev
-      config:
-        server-addr: ${NACOS_HOST:localhost}:8848
-        namespace: dev
-        file-extension: yaml
 
 mybatis-plus:
   mapper-locations: classpath*:mapper/**/*.xml
@@ -37,7 +28,7 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
-# AI（Claude API）配置
+# AI Claude API
 ai:
   claude:
     api-key: ${ANTHROPIC_API_KEY:your-api-key-here}
@@ -45,7 +36,6 @@ ai:
     model: claude-sonnet-4-6
     max-tokens: 1024
 
-# Resilience4j 熔断配置
 resilience4j:
   circuitbreaker:
     instances:
@@ -61,7 +51,6 @@ resilience4j:
         max-attempts: 3
         wait-duration: 500ms
 
-# OpenFeign 配置
 feign:
   client:
     config:

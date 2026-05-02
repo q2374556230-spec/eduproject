@@ -45,6 +45,13 @@ public interface UserService {
     UserVO updateProfile(Long userId, UpdateProfileRequest request);
 
     /**
+     * 修改当前用户密码
+     * @param userId 用户ID
+     * @param request 修改密码请求
+     */
+    void changePassword(Long userId, ChangePasswordRequest request);
+
+    /**
      * 分页查询用户列表（管理员）
      * @param page 页码
      * @param size 每页大小

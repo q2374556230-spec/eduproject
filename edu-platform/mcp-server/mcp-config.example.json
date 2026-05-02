@@ -2,7 +2,7 @@
   "mcpServers": {
     "edu-platform": {
       "command": "node",
-      "args": ["mcp-server/src/index.js"],
+      "args": ["<absolute-path-to-edu-platform>/mcp-server/src/index.js"],
       "env": {
         "GATEWAY_URL": "http://localhost:8080",
         "PLATFORM_TOKEN": "<在此填入管理员JWT token>"

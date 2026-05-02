@@ -23,10 +23,12 @@ public interface CourseService {
 
     void publishCourse(Long id);
 
+    void unpublishCourse(Long id);
+
     List<Category> listCategories();
 
     /** AI 推荐课程（调用 Claude API） */
-    List<CourseVO> getAiRecommendations(Long userId, String userInterest);
+    List<CourseVO> getAiRecommendations(Long userId, String userInterest, String level, String goal, Integer limit);
 
     /** 增加学生数量（订单支付成功后调用） */
     void incrementStudentCount(Long courseId);

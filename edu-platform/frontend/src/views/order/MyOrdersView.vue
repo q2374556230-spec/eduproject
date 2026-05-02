@@ -84,14 +84,14 @@ async function loadOrders() {
 }
 
 async function handlePay(order) {
-  await orderApi.payOrder(order.orderNo)
+  await orderApi.payOrder(order.id)
   ElMessage.success('支付成功')
   loadOrders()
 }
 
 async function handleCancel(order) {
   await ElMessageBox.confirm('确定要取消该订单吗？', '提示', { type: 'warning' })
-  await orderApi.cancelOrder(order.orderNo)
+  await orderApi.cancelOrder(order.id)
   ElMessage.success('订单已取消')
   loadOrders()
 }

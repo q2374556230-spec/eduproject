@@ -127,16 +127,17 @@ cp .env.example .env          # 编辑数据库密码、JWT Secret 等
 `.env` 关键配置项：
 
 ```env
-MYSQL_ROOT_PASSWORD=your_password
+MYSQL_PASSWORD=your_password
 JWT_SECRET=your_jwt_secret_min_32_chars
-NACOS_AUTH_TOKEN=your_nacos_token
-CLAUDE_API_KEY=sk-ant-...       # course-service AI 推荐
+NACOS_NAMESPACE=                # optional; leave empty for public namespace
+ANTHROPIC_API_KEY=sk-ant-...    # optional; course-service AI recommendations
 ```
 
 ### 3. 一键启动所有服务
 
 ```bash
-docker-compose up -d
+mvn -DskipTests package
+docker compose up -d --build
 ```
 
 启动顺序（由 `depends_on` + healthcheck 保证）：
@@ -155,7 +156,7 @@ MySQL / Redis / RabbitMQ / Nacos
 curl http://localhost:8080/actuator/health
 
 # 用户服务（通过网关路由）
-curl http://localhost:8080/user-service/actuator/health
+curl http://localhost:8081/actuator/health
 ```
 
 ### 5. 访问入口
@@ -165,7 +166,7 @@ curl http://localhost:8080/user-service/actuator/health
 | 前端 | http://localhost |
 | API 网关 | http://localhost:8080 |
 | Nacos 控制台 | http://localhost:8848/nacos（nacos/nacos） |
-| RabbitMQ 管理 | http://localhost:15672（guest/guest） |
+| RabbitMQ 管理 | http://localhost:15672（edu/edu123456） |
 | Zipkin 链路 | http://localhost:9411 |
 
 ---
@@ -176,7 +177,7 @@ curl http://localhost:8080/user-service/actuator/health
 
 ```bash
 # 注册
-POST http://localhost:8080/user-service/api/auth/register
+POST http://localhost:8080/api/user/register
 {
   "username": "test",
   "password": "Test@1234",
@@ -184,7 +185,7 @@ POST http://localhost:8080/user-service/api/auth/register
 }
 
 # 登录（返回 JWT）
-POST http://localhost:8080/user-service/api/auth/login
+POST http://localhost:8080/api/user/login
 {
   "username": "test",
   "password": "Test@1234"
@@ -195,10 +196,10 @@ POST http://localhost:8080/user-service/api/auth/login
 
 ```bash
 # 搜索课程
-GET http://localhost:8080/course-service/api/courses?keyword=Java&page=1&size=10
+GET http://localhost:8080/api/course/list?keyword=Java&page=1&size=10
 
 # AI 推荐
-GET http://localhost:8080/course-service/api/courses/ai-recommendations?limit=5
+GET http://localhost:8080/api/course/recommend?interest=Java
 Authorization: Bearer <JWT>
 ```
 
@@ -206,7 +207,7 @@ Authorization: Bearer <JWT>
 
 ```bash
 # 创建订单
-POST http://localhost:8080/order-service/api/orders
+POST http://localhost:8080/api/order/create
 Authorization: Bearer <JWT>
 {
   "courseId": 1
@@ -278,8 +279,8 @@ mvn clean install -DskipTests -T 4
 ### 单独启动某个服务
 
 ```bash
-# 确保基础设施（MySQL/Redis/Nacos/RabbitMQ）已通过 docker-compose 启动
-docker-compose up -d mysql redis nacos rabbitmq
+# 确保基础设施（MySQL/Redis/Nacos/RabbitMQ）已通过 docker compose 启动
+docker compose up -d mysql redis nacos rabbitmq
 
 # 启动 user-service
 cd user-service

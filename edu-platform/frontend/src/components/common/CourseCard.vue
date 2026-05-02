@@ -14,6 +14,10 @@
     </div>
     <div class="card-body">
       <div class="course-title" :title="course.title">{{ course.title }}</div>
+      <div v-if="course.recommendReason" class="recommend-box">
+        <div class="recommend-score">匹配度 {{ course.matchScore || 88 }}%</div>
+        <div class="recommend-reason">{{ course.recommendReason }}</div>
+      </div>
       <div class="course-teacher">
         <el-icon><Avatar /></el-icon>{{ course.teacherName }}
       </div>
@@ -61,9 +65,9 @@ async function handleEnroll() {
   }
   try {
     const res = await orderApi.createOrder({ courseId: props.course.id })
-    const orderNo = res.data.orderNo
+    const orderId = res.data.id
     if (props.course.price === 0) {
-      await orderApi.payOrder(orderNo)
+      await orderApi.payOrder(orderId)
       ElMessage.success('已成功加入学习')
     } else {
       router.push(`/orders`)
@@ -97,6 +101,23 @@ async function handleEnroll() {
   font-weight: 600; font-size: 14px; line-height: 1.4;
   margin-bottom: 8px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.recommend-box {
+  background: #f0f7ff;
+  border-left: 3px solid #409eff;
+  border-radius: 6px;
+  padding: 8px;
+  margin-bottom: 10px;
+}
+.recommend-score { color: #1f6feb; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.recommend-reason {
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .course-teacher { color: #909399; font-size: 12px; display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
 .course-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }

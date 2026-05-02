@@ -46,9 +46,12 @@ public class CourseController {
     @Operation(summary = "AI课程推荐")
     @GetMapping("/recommend")
     public Result<List<CourseVO>> recommend(
-            @RequestParam(required = false) String interest) {
+            @RequestParam(name = "interest", required = false) String interest,
+            @RequestParam(name = "level", required = false) String level,
+            @RequestParam(name = "goal", required = false) String goal,
+            @RequestParam(name = "limit", required = false, defaultValue = "3") Integer limit) {
         Long userId = UserContext.getCurrentUserId();
-        List<CourseVO> recommendations = courseService.getAiRecommendations(userId, interest);
+        List<CourseVO> recommendations = courseService.getAiRecommendations(userId, interest, level, goal, limit);
         return Result.success(recommendations);
     }
 
@@ -75,14 +78,21 @@ public class CourseController {
     @PutMapping("/{id}/publish")
     public Result<Void> publishCourse(@PathVariable Long id) {
         courseService.publishCourse(id);
-        return Result.success("发布成功");
+        return Result.success();
+    }
+
+    @Operation(summary = "下架课程")
+    @PutMapping("/{id}/unpublish")
+    public Result<Void> unpublishCourse(@PathVariable Long id) {
+        courseService.unpublishCourse(id);
+        return Result.success();
     }
 
     @Operation(summary = "删除课程")
     @DeleteMapping("/{id}")
     public Result<Void> deleteCourse(@PathVariable Long id) {
         courseService.deleteCourse(id);
-        return Result.success("删除成功");
+        return Result.success();
     }
 
     @Operation(summary = "增加学生数（内部接口）")
