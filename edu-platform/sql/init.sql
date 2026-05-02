@@ -3,6 +3,9 @@
 -- ==========================================
 
 -- 用户库
+SET NAMES utf8mb4;
+SET CHARACTER SET utf8mb4;
+
 CREATE DATABASE IF NOT EXISTS edu_user DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 -- 课程库
 CREATE DATABASE IF NOT EXISTS edu_course DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
