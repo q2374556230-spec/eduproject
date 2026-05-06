@@ -1,540 +1,211 @@
-# 在线教育平台课设版技术说明
+# 在线教育平台技术说明
 
-本文档面向项目组成员和 GitHub 读者，重点说明本项目涉及的技术栈、模块职责、本地运行方式，以及当前课设版重点实现的“课程库 + AI 课程推荐 + 前端展示”最小业务闭环。
+本文档用于说明本项目的总体架构、模块职责、当前完成度和后续待补齐内容。项目整体按照“用户访问层 -> 网关层 -> 业务服务层 -> 基础设施层”的微服务架构组织。
 
-## 1. 项目定位
-
-本项目原始设计是一个在线教育微服务平台，包含用户、课程、订单、通知、网关、前端、MCP 工具服务、Docker 编排和 CI/CD 配置等内容。
-
-当前课设版本已经将目标收缩为一个可演示、可部署、可解释的核心闭环：
+## 1. 总体架构
 
 ```text
-前端输入学习兴趣、当前水平、学习目标、推荐数量
-        ↓
-调用后端 AI 推荐接口
-        ↓
-后端查询已有课程库
-        ↓
-后端调用 Claude API，或在无 API Key 时使用本地 mock 推荐逻辑
-        ↓
-返回推荐课程、推荐理由、匹配度
-        ↓
-前端展示推荐结果
+用户访问层
+  前端 / 浏览器
+
+网关层
+  Spring Cloud Gateway
+
+业务服务层
+  User Service / Course Service / Order Service / Notification Service
+
+基础设施层
+  Nacos / MySQL / Redis / RabbitMQ / Zipkin / Kubernetes / Prometheus / Grafana
 ```
 
-因此，课程服务、网关、前端、MySQL、Redis、Nacos 是当前演示的关键部分。订单、通知、RabbitMQ、Zipkin、MCP、Jenkins 等模块保留在项目中，但在课设演示中属于 optional 模块。
+当前工程已经落地了前端、网关、用户服务、课程服务、订单服务、通知服务，以及 Docker Compose 版本的基础设施。Kubernetes、Prometheus、Grafana 更偏向部署与可观测扩展，目前主要作为架构规划内容保留。
 
-## 2. 总体技术栈
+## 2. 架构分层说明
 
-### 后端
+### 2.1 用户访问层
 
-| 技术 | 版本/说明 | 项目用途 |
-|---|---|---|
-| Java | JDK 17 | 后端开发语言 |
-| Spring Boot | 3.2.4 | 微服务应用基础框架 |
-| Spring Cloud | 2023.0.1 | 服务治理、网关、OpenFeign 等 |
-| Spring Cloud Alibaba | 2023.0.1.0 | Nacos 服务注册与配置 |
-| Spring Cloud Gateway | WebFlux 网关 | 统一入口、路由转发、JWT 过滤 |
-| MyBatis-Plus | Boot 3 starter | ORM、分页、CRUD 简化 |
-| MySQL | 8.0 | 存储课程、用户、订单、通知等业务数据 |
-| Redis | 7 | 课程分类/详情缓存、JWT 黑名单等 |
-| Spring Security | Spring Boot 集成 | 用户服务鉴权 |
-| JWT | jjwt 0.12.5 | 登录态 token |
-| OpenFeign | Spring Cloud OpenFeign | 服务间调用，当前课设主流程依赖较弱 |
-| WebClient | Spring WebFlux | 调用 Claude API |
-| Docker Compose | 本地编排 | 一键启动本地依赖和服务 |
+用户访问层由 `frontend` 提供，技术栈为 Vue 3、Vite、Element Plus、Pinia、Vue Router 和 Axios。
 
-### 前端
+主要职责：
 
-| 技术 | 说明 | 项目用途 |
-|---|---|---|
-| Vue 3 | 前端框架 | 页面与组件开发 |
-| Vite | 构建工具 | 本地开发和生产构建 |
-| Pinia | 状态管理 | 用户、课程等状态管理 |
-| Vue Router | 路由 | 页面跳转 |
-| Element Plus | UI 组件库 | 表单、按钮、卡片、表格等 |
-| Axios | HTTP 客户端 | 调用后端 API |
-| Nginx | 前端容器运行 | Docker 中托管静态页面并代理 API |
+- 提供课程列表、课程详情、登录注册、个人中心、订单列表、通知抽屉等页面。
+- 通过统一的前端 API 封装访问后端接口。
+- 在 Docker 环境中由 Nginx 托管静态资源，并代理 API 请求到网关。
 
-### AI 推荐
+### 2.2 网关层
 
-| 技术/方式 | 说明 |
-|---|---|
-| Anthropic Claude API | 有真实 `ANTHROPIC_API_KEY` 时可调用大模型生成推荐 |
-| 本地 mock 推荐逻辑 | 无 API Key 或调用失败时使用，保证课设演示稳定 |
-| 课程库匹配 | 基于课程标题、分类、标签、难度、热度进行推荐排序 |
+网关层由 `gateway-service` 提供，基于 Spring Cloud Gateway。
 
-## 3. 项目目录结构
+主要职责：
 
-```text
-edu-platform/
-├── common/
-│   ├── common-core/              # 通用返回结果、异常处理、MyBatis/Redis 通用配置
-│   └── common-security/          # JWT 工具、登录用户模型、用户上下文
-├── gateway-service/              # API 网关，统一转发 /api/**
-├── user-service/                 # 用户注册、登录、个人信息、JWT
-├── course-service/               # 课程库、分类、AI 课程推荐，当前核心服务
-├── order-service/                # 订单模块，课设演示中 optional
-├── notification-service/         # 通知模块，课设演示中 optional
-├── frontend/                     # Vue 3 前端
-├── mcp-server/                   # MCP 工具服务，课设演示中 optional
-├── sql/init.sql                  # MySQL 初始化脚本
-├── docker-compose.yml            # 本地 Docker 编排
-├── .env.example                  # 环境变量示例
-└── README.md                     # 项目基础说明
-```
-
-## 4. 核心模块说明
-
-### 4.1 course-service
-
-课程服务是当前课设版最核心的后端服务，主要能力包括：
-
-- 查询课程列表：`GET /api/course/list`
-- 查询课程详情：`GET /api/course/{id}`
-- 查询课程分类：`GET /api/course/category/list`
-- AI 课程推荐：`GET /api/course/recommend`
-
-AI 推荐接口支持以下参数：
-
-| 参数 | 说明 | 示例 |
-|---|---|---|
-| `interest` | 学习兴趣 | `Java`、`前端开发`、`数据分析` |
-| `level` | 当前水平 | `beginner`、`intermediate`、`advanced` |
-| `goal` | 学习目标 | `完成课设`、`准备实习` |
-| `limit` | 推荐数量 | `3` |
-
-示例：
-
-```http
-GET http://localhost:18080/api/course/recommend?interest=Java&level=beginner&goal=完成课设&limit=3
-```
-
-返回结果包含：
-
-```json
-{
-  "code": 200,
-  "data": [
-    {
-      "id": 1,
-      "title": "课程标题",
-      "level": "beginner",
-      "recommendReason": "推荐理由",
-      "matchScore": 88
-    }
-  ]
-}
-```
-
-### 4.2 gateway-service
-
-网关负责统一入口和路由转发。本地 Docker 映射端口是：
-
-```text
-http://localhost:18080
-```
+- 统一暴露 `/api/**` 入口。
+- 根据路径转发到 user、course、order、notification 等业务服务。
+- 进行 JWT 校验，并将用户信息写入 `X-User-Id`、`X-User-Name`、`X-User-Role` 请求头传递给下游服务。
+- 配置跨域、限流、Swagger 聚合和链路追踪。
 
 核心路由：
 
-| 外部路径 | 转发服务 |
+| 外部路径 | 下游服务 |
 |---|---|
-| `/api/course/**` | `course-service` |
 | `/api/user/**` | `user-service` |
+| `/api/course/**` | `course-service` |
 | `/api/order/**` | `order-service` |
 | `/api/notify/**` | `notification-service` |
 
-为方便课设演示，以下接口已加入白名单，无需登录：
+### 2.3 业务服务层
 
-- `/api/user/register`
-- `/api/user/login`
-- `/api/course/list`
-- `/api/course/category/list`
-- `/api/course/recommend`
+业务服务层按领域拆分为 4 个服务。
 
-### 4.3 frontend
+| 服务 | 端口 | 当前状态 | 职责 |
+|---|---:|---|---|
+| `user-service` | 8081 | 基本完成 | 用户注册、登录、JWT 签发、用户管理、个人资料维护 |
+| `course-service` | 8082 | 基本完成 | 课程列表、课程详情、分类管理、课程管理、AI/mock 推荐 |
+| `order-service` | 8083 | 部分完成 | 订单创建、订单查询、模拟支付、取消订单、订单统计、支付事件发布 |
+| `notification-service` | 8084 | 部分完成 | 站内通知查询、未读数、标记已读、消费订单支付事件生成通知 |
 
-前端首页当前围绕课设主流程设计，主要区域包括：
-
-- 课程搜索
-- AI 推荐表单
-- 推荐课程展示
-- 课程分类
-- 热门课程
-
-AI 推荐表单字段：
-
-- 学习兴趣
-- 当前水平
-- 学习目标
-- 推荐数量
-
-点击“生成推荐”后，前端调用：
-
-```js
-GET /api/course/recommend
-```
-
-然后展示课程卡片，每张卡片包含：
-
-- 课程封面
-- 课程标题
-- 课程难度
-- 推荐理由
-- 匹配度
-- 讲师
-- 学习人数
-- 价格
-
-## 5. AI 推荐实现过程
-
-### 5.1 数据来源
-
-推荐系统不是凭空生成课程，而是先从本地课程库中查询已有课程。
-
-后端逻辑位于：
+当前主业务闭环可以概括为：
 
 ```text
-course-service/src/main/java/com/edu/course/service/impl/CourseServiceImpl.java
+用户登录
+  -> 浏览课程
+  -> 查看课程详情
+  -> 创建课程订单
+  -> 模拟支付订单
+  -> RabbitMQ 发布订单支付事件
+  -> 通知服务消费事件
+  -> 生成站内通知
+  -> 前端通知抽屉展示
 ```
 
-主要步骤：
+其中 user、course 是较完整的核心服务；order、notification 已有可运行骨架和部分接口，但仍需要补齐真实业务规则、权限控制和异常保障。
 
-1. 构造课程查询条件。
-2. 按热度查询课程库中的课程。
-3. 获取课程标题、分类、难度、标签、价格等摘要信息。
-4. 判断是否有可用 Claude API Key。
-5. 有 API Key 时调用 Claude。
-6. 无 API Key 或调用失败时使用本地 mock 推荐。
-7. 返回课程对象，并补充 `recommendReason` 和 `matchScore`。
+### 2.4 基础设施层
 
-### 5.2 Claude API 调用
+当前 `docker-compose.yml` 已提供本地开发和演示所需的基础设施。
 
-Claude API 客户端位于：
+| 组件 | 当前状态 | 用途 |
+|---|---|---|
+| Nacos | 已接入 | 服务注册与配置中心 |
+| MySQL | 已接入 | 存储用户、课程、订单、通知等业务数据 |
+| Redis | 已接入 | 网关限流、课程缓存等 |
+| RabbitMQ | 已接入 | 订单支付事件通知 |
+| Zipkin | 已接入 | 分布式链路追踪 |
+| Kubernetes | 规划中 | 生产级容器编排 |
+| Prometheus | 规划中 | 指标采集 |
+| Grafana | 规划中 | 指标看板与告警展示 |
 
-```text
-course-service/src/main/java/com/edu/course/client/ClaudeAiClient.java
-```
+## 3. 当前完成度
 
-实现方式：
+### 已完成或基本可演示
 
-- 使用 Spring WebClient 发起 HTTP 请求。
-- 请求地址为 Anthropic Messages API。
-- 请求头包含：
-  - `x-api-key`
-  - `anthropic-version`
-  - `Content-Type`
-- 请求体包含：
-  - model
-  - max_tokens
-  - messages
+- 前端页面和主要路由已具备。
+- 网关路由、跨域、JWT 过滤和请求头透传已具备。
+- 用户注册、登录、资料管理和用户管理已具备。
+- 课程查询、课程详情、分类、后台课程管理和 AI/mock 推荐已具备。
+- Docker Compose 可启动 MySQL、Redis、RabbitMQ、Nacos、Zipkin、各业务服务和前端。
+- 后端 Maven 构建可通过。
+- 前端 Vite 构建可通过。
 
-AI 被要求只返回 JSON，例如：
+### 尚未完全完成
 
-```json
-[
-  {
-    "id": 1,
-    "reason": "适合 Java 入门并能支撑课程项目",
-    "matchScore": 95
-  }
-]
-```
+`order-service` 和 `notification-service` 目前属于“已有基础实现，但业务完整性不足”的状态。
 
-后端再根据 `id` 匹配本地课程实体，避免 AI 推荐不存在的课程。
+## 4. Order Service 当前状态
 
-### 5.3 Mock 推荐降级
+### 已有能力
 
-课设演示最怕外部 API key、网络或额度问题导致推荐功能无法展示。因此当前实现了本地 mock 推荐逻辑。
+- `POST /api/order/create`：创建课程订单。
+- `GET /api/order/list`：查询当前用户订单。
+- `GET /api/order/{orderId}`：查询订单详情。
+- `POST /api/order/{orderId}/pay`：模拟支付。
+- `POST /api/order/{orderId}/cancel`：取消订单。
+- `GET /api/order/admin/list`：管理员订单列表。
+- `GET /api/order/admin/stats`：订单统计。
+- 通过 Feign 调用课程服务获取课程快照信息。
+- 支付成功后向 RabbitMQ 发布订单支付事件。
 
-当满足以下情况时，会走 mock：
+### 待完成能力
 
-- `ANTHROPIC_API_KEY` 为空
-- `ANTHROPIC_API_KEY` 是 placeholder
-- Claude API 调用失败
-- Claude 返回内容解析失败
+- 真实支付链路：支付宝、微信或第三方支付回调校验。
+- 订单状态机：待支付、已支付、已取消、已退款等状态需要统一约束。
+- 支付幂等：重复点击支付、重复回调、重复消息需要保证不会重复处理。
+- 超时取消：待支付订单超过指定时间自动关闭。
+- 退款流程：退款申请、退款审核、退款完成、课程学习权限回收。
+- 权限校验：管理员接口需要明确校验角色，普通用户只能操作自己的订单。
+- 异常补偿：课程服务调用失败、RabbitMQ 发送失败时需要补偿或重试机制。
+- 测试覆盖：创建订单、重复购买、支付、取消、统计等核心路径应补单元测试和集成测试。
 
-mock 推荐会根据以下因素计算匹配度：
+## 5. Notification Service 当前状态
 
-- 用户兴趣是否出现在课程标题、描述、分类或标签中
-- 用户选择的难度是否和课程难度一致
-- 学习目标是否能匹配课程文本
-- 课程学习人数热度
+### 已有能力
 
-最终返回：
+- `GET /api/notify/my`：查询当前用户通知。
+- `GET /api/notify/list`：按用户查询通知。
+- `GET /api/notify/unread-count`：查询当前用户未读通知数。
+- `PUT /api/notify/{id}/read`：标记单条通知已读。
+- `PUT /api/notify/read-all`：标记全部通知已读。
+- 监听 RabbitMQ 订单支付队列。
+- 支付事件消费成功后写入站内通知表。
 
-- 推荐课程
-- 推荐理由
-- 匹配度分数
+### 待完成能力
 
-这样即使没有真实 AI key，项目仍然可以稳定演示完整业务流程。
+- 通知服务层：目前控制器直接使用 Mapper，建议补 `NotificationService` 统一承载业务逻辑。
+- 权限校验：标记已读时应校验通知是否属于当前用户；管理员查询接口应校验角色。
+- 消息可靠性：需要补死信队列、重试策略、消费幂等和重复消息处理。
+- 通知类型扩展：系统通知、课程通知、订单通知、营销通知等类型可统一枚举。
+- 实时推送：如需更完整体验，可增加 WebSocket 或 SSE。
+- 多渠道通知：站内信之外可扩展邮件、短信或企业微信。
+- 前端刷新机制：通知抽屉已能展示数据，但未读数刷新和已读状态同步还可完善。
+- 测试覆盖：消费订单事件、查询通知、标记已读、权限隔离等路径应补测试。
 
-## 6. 本地运行方式
+## 6. 推荐后续开发顺序
 
-### 6.1 环境要求
+1. 先补 order、notification 的权限校验，避免用户越权访问订单或通知。
+2. 为通知模块增加 `NotificationService`，把控制器中的查询和更新逻辑下沉。
+3. 为订单支付事件增加幂等处理，避免重复消费生成多条通知。
+4. 增加 RabbitMQ 死信队列和失败日志，保证消息异常可追踪。
+5. 补订单状态流转和超时取消。
+6. 最后再接入真实支付、WebSocket、Prometheus、Grafana、Kubernetes 等扩展能力。
 
-推荐环境：
+## 7. 本地验证命令
 
-- JDK 17
-- Maven 3.8+
-- Node.js 18+
-- Docker Desktop
-- Git
-
-### 6.2 配置环境变量
-
-复制环境变量示例：
-
-```powershell
-copy .env.example .env
-```
-
-关键变量：
-
-```env
-MYSQL_PASSWORD=edu123456
-JWT_SECRET=edu-platform-jwt-secret-key-2024-very-long-secret
-ANTHROPIC_API_KEY=sk-placeholder
-NACOS_NAMESPACE=
-```
-
-如果没有 Claude API Key，保持 `sk-placeholder` 即可，系统会自动使用 mock 推荐。
-
-### 6.3 构建后端
-
-完整构建：
+后端构建：
 
 ```powershell
 mvn -DskipTests package
 ```
 
-如果只演示课设核心流程，可以构建关键服务：
+前端构建：
 
 ```powershell
-mvn -DskipTests package -pl course-service,gateway-service -am
+cd frontend
+npm run build
 ```
 
-### 6.4 启动 Docker
-
-完整启动：
+Docker 启动：
 
 ```powershell
 docker compose up -d --build
 ```
 
-只重启课设主流程相关服务：
-
-```powershell
-docker compose up -d --build course-service gateway-service frontend
-```
-
-查看容器状态：
+服务状态：
 
 ```powershell
 docker compose ps
 ```
 
-核心访问地址：
+主要访问地址：
 
-| 服务 | 地址 |
+| 入口 | 地址 |
 |---|---|
 | 前端 | `http://localhost` |
-| 网关 | `http://localhost:18080` |
-| 课程服务直连 | `http://localhost:8082` |
-| MySQL | `localhost:13306` |
+| API 网关 | `http://localhost:18080` |
 | Nacos | `http://localhost:8848/nacos` |
+| RabbitMQ 管理台 | `http://localhost:15672` |
+| Zipkin | `http://localhost:19411` |
 
-## 7. 核心接口测试
+## 8. 结论
 
-### 7.1 课程列表
+本项目整体已经符合预期的四层微服务架构：前端负责用户访问，网关负责统一入口和认证转发，业务服务层按 user、course、order、notification 拆分，基础设施层提供注册配置、数据库、缓存、消息队列和链路追踪。
 
-```powershell
-Invoke-RestMethod -Uri http://localhost:18080/api/course/list
-```
-
-预期：
-
-```text
-code = 200
-data.total > 0
-```
-
-### 7.2 课程分类
-
-```powershell
-Invoke-RestMethod -Uri http://localhost:18080/api/course/category/list
-```
-
-预期：
-
-```text
-code = 200
-data 中有分类列表
-```
-
-### 7.3 AI 推荐
-
-```powershell
-Invoke-RestMethod -Uri "http://localhost:18080/api/course/recommend?interest=Java&level=beginner&goal=完成课设&limit=3"
-```
-
-预期：
-
-```text
-code = 200
-data 数量 = 3
-每个推荐结果包含 recommendReason 和 matchScore
-```
-
-### 7.4 前端演示
-
-浏览器打开：
-
-```text
-http://localhost
-```
-
-操作流程：
-
-1. 在首页 AI 推荐区域输入学习兴趣。
-2. 选择当前水平。
-3. 输入学习目标。
-4. 设置推荐数量。
-5. 点击“生成推荐”。
-6. 查看推荐课程、推荐理由和匹配度。
-
-## 8. 已修复或适配的关键问题
-
-为了让本地 Docker 演示可用，项目做过以下重要适配：
-
-- 增加 MySQL Docker 容器，并挂载 `sql/init.sql`。
-- 修正 MySQL、Redis、RabbitMQ、Nacos 等环境变量。
-- 将 Nacos 默认 namespace 改为 public，即 `NACOS_NAMESPACE=`。
-- 增加 `bootstrap.yml`，让 Nacos 配置在 bootstrap 阶段可读取。
-- 修复 Spring Boot 3 与 MyBatis-Plus 的兼容问题，改用 Boot 3 starter。
-- 给 gateway、course、order 显式增加 loadbalancer 依赖，保证 `lb://service-name` 可解析。
-- 将课程推荐接口加入网关白名单，便于无需登录演示。
-- 修复课程服务 YAML 中的损坏配置。
-- 前端 API facade 已对课程路径进行适配。
-- 前端首页增加 AI 推荐输入表单和推荐结果展示。
-- 后端增加无 API Key 时的 mock 推荐降级。
-
-## 9. Optional 模块说明
-
-以下模块在完整项目中存在，但当前课设版不是主线。
-
-| 模块 | 当前状态 |
-|---|---|
-| order-service | 可启动，但课设主流程不依赖 |
-| notification-service | 可启动，但通知列表等接口不是当前重点 |
-| RabbitMQ | 订单通知链路使用，课设 AI 推荐不依赖 |
-| Zipkin | 链路追踪，课设演示不依赖 |
-| MCP Server | Claude Desktop 工具调用，课设演示不依赖 |
-| Jenkinsfile | CI/CD 示例，课设演示不依赖 |
-| Resilience4j | 熔断降级配置，当前不作为主要展示点 |
-
-如果这些模块出现问题，优先判断是否影响以下主流程：
-
-```text
-前端推荐表单 → /api/course/recommend → course-service → 课程库 → AI/mock 推荐 → 前端展示
-```
-
-如果不影响，则记录为 optional issue，不建议优先投入时间修复。
-
-## 10. GitHub 上传建议
-
-### 10.1 上传前检查
-
-建议上传前执行：
-
-```powershell
-git status
-mvn -DskipTests package -pl course-service,gateway-service -am
-cd frontend
-npm run build
-```
-
-确认：
-
-- 不上传真实 API Key。
-- `.env` 不应提交。
-- `.env.example` 可以提交。
-- `target/`、`node_modules/`、`dist/` 通常不提交。
-- `frontend/package-lock.json` 可以提交，用于锁定依赖。
-- `mcp-server/package-lock.json` 如果保留 MCP 模块，也可以提交。
-
-### 10.2 推荐 README 重点
-
-GitHub README 中建议突出：
-
-- 项目是在线教育平台课设版。
-- 当前核心功能是 AI 课程推荐。
-- 支持无 API Key 的 mock 推荐演示。
-- 提供 Docker Compose 本地启动方式。
-- 说明 optional 模块不属于当前主演示链路。
-
-### 10.3 建议的 `.gitignore`
-
-如果仓库还没有 `.gitignore`，建议至少包含：
-
-```gitignore
-.env
-target/
-node_modules/
-dist/
-.idea/
-.vscode/
-*.log
-logs/
-```
-
-如果希望保留 VS Code 配置给组员，可以不要忽略 `.vscode/`，但不要提交个人机器路径、插件缓存或敏感配置。
-
-## 11. 组员分工建议
-
-可以按以下方向分工：
-
-| 成员 | 建议负责内容 |
-|---|---|
-| 后端同学 A | 课程列表、分类、课程详情接口说明 |
-| 后端同学 B | AI 推荐接口、Claude/mock 推荐逻辑说明 |
-| 前端同学 | 首页推荐表单、课程卡片、推荐结果展示 |
-| 部署同学 | Docker Compose、本地启动、环境变量 |
-| 文档同学 | README、演示流程、接口测试截图 |
-
-演示时建议只讲主流程，避免被旁支模块带偏：
-
-1. 课程库数据来自 MySQL。
-2. 前端输入推荐条件。
-3. 网关转发到课程服务。
-4. 课程服务查询课程库。
-5. 有 AI Key 就调用 Claude，没有就使用 mock。
-6. 返回课程、理由、匹配度。
-7. 前端卡片展示结果。
-
-## 12. 常见问题
-
-### Q1：没有 Claude API Key 能演示吗？
-
-可以。`.env` 中 `ANTHROPIC_API_KEY=sk-placeholder` 时，后端会自动使用本地 mock 推荐逻辑。
-
-### Q2：为什么网关端口是 18080？
-
-为了避免和本机其他服务的 8080 冲突，Docker Compose 将 gateway 的容器端口 8080 映射到了宿主机 18080。
-
-### Q3：为什么前端地址是 localhost？
-
-前端容器使用 Nginx 暴露 80 端口，因此浏览器直接访问：
-
-```text
-http://localhost
-```
-
-### Q4：订单、通知、MCP 需要演示吗？
-
-当前课设目标下不需要。它们是保留模块或扩展模块，不影响 AI 推荐主流程。
-
-### Q5：推荐理由是 AI 生成的吗？
-
-如果配置了真实 Claude API Key，并且外网和额度正常，则推荐理由来自 Claude。否则来自本地 mock 推荐逻辑。两种情况返回结构一致，前端展示方式一致。
-
+需要特别说明的是：`order-service` 和 `notification-service` 不是完全空缺，而是处于“基础闭环可运行、生产级业务能力待完善”的阶段。后续重点应放在权限、幂等、状态机、消息可靠性和测试覆盖上。
